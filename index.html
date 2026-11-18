@@ -66,13 +66,14 @@
           <span>錯題本 (<span id="nav-wrong-count">0</span>)</span>
         </button>
 
+        <button id="nav-leaderboard-btn" onclick="openLeaderboard()" class="bg-amber-500 hover:bg-amber-400 text-amber-950 px-2.5 py-1.5 rounded-lg text-xs md:text-sm font-bold flex items-center space-x-1.5 shadow-sm transition cursor-pointer">
+          <i class="fa-solid fa-trophy"></i>
+          <span>排行榜</span>
+        </button>
+
         <button id="nav-bank-btn" onclick="openBankBrowser()" class="hidden bg-sky-600 hover:bg-sky-500 text-white border border-sky-400 px-2.5 py-1.5 rounded-lg text-xs md:text-sm font-bold flex items-center space-x-1.5 transition cursor-pointer">
           <i class="fa-solid fa-magnifying-glass"></i>
           <span>檢視題庫</span>
-        </button>
-
-        <button id="sound-toggle" onclick="toggleSound()" title="開關音效" class="p-2 rounded-lg bg-black/15 hover:bg-black/25 text-white text-xs md:text-sm transition cursor-pointer">
-          <i class="fa-solid fa-volume-high" id="sound-icon"></i>
         </button>
 
         <div id="nav-user-pill" class="flex items-center space-x-2 bg-emerald-900/80 border border-emerald-600 px-2.5 py-1 rounded-lg text-xs md:text-sm">
@@ -496,6 +497,7 @@
                   <th class="px-3 py-2.5">練習模式</th>
                   <th class="px-3 py-2.5">作答結果</th>
                   <th class="px-3 py-2.5">使用時間</th>
+                  <th class="px-3 py-2.5 text-right">操作</th>
                 </tr>
               </thead>
               <tbody id="admin-logs-tbody" class="divide-y divide-slate-200 bg-white"></tbody>
@@ -554,6 +556,51 @@
         </div>
       </div>
     </div>
+
+    <!-- 7. 積分排行榜畫面 -->
+    <div id="view-leaderboard" class="hidden space-y-5">
+      <div class="glass-card rounded-2xl shadow-xl border border-amber-200 p-5 md:p-7 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-amber-200">
+          <div>
+            <h2 class="text-xl md:text-2xl font-extrabold text-amber-950"><i class="fa-solid fa-trophy text-amber-500 mr-2"></i>學生積分排行榜</h2>
+            <p class="text-xs text-slate-500 mt-0.5">積分計算方式：每答對 1 題 +1 分（依各學生帳號累計答對題數排行）</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <select id="lb-sort-by" onchange="renderLeaderboard()" class="px-3 py-2 rounded-xl border border-amber-300 text-xs md:text-sm font-bold bg-white text-amber-950">
+              <option value="score">排序：積分（答對題數）</option>
+              <option value="accuracy">排序：答對率</option>
+              <option value="sudden">排序：驟死戰最佳</option>
+            </select>
+            <select id="lb-group-filter" onchange="renderLeaderboard()" class="px-3 py-2 rounded-xl border border-amber-300 text-xs md:text-sm font-bold bg-amber-50 text-amber-950">
+              <option value="">全部年段總積分</option>
+              <option value="國小">國小組</option>
+              <option value="國中">國中組</option>
+              <option value="高中職">高中職組</option>
+              <option value="社會">社會組</option>
+            </select>
+            <button onclick="closeLeaderboard()" class="px-4 py-2 rounded-xl text-sm font-bold bg-slate-700 hover:bg-slate-800 text-white shadow transition cursor-pointer">
+              <i class="fa-solid fa-arrow-left mr-1.5"></i>返回
+            </button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto border border-slate-200 rounded-xl">
+          <table class="w-full text-sm text-left">
+            <thead class="bg-amber-50 text-amber-950 text-xs uppercase">
+              <tr>
+                <th class="px-4 py-3 w-20 text-center">名次</th>
+                <th class="px-4 py-3">姓名（帳號）</th>
+                <th class="px-4 py-3 text-right">積分（答對題數）</th>
+                <th class="px-4 py-3 text-right">累計作答</th>
+                <th class="px-4 py-3 text-right">正確率</th>
+                <th class="px-4 py-3 text-right">驟死賽最佳</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboard-tbody" class="divide-y divide-slate-200 bg-white"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </main>
 
   <!-- Modal: 新增 / 編輯使用者 -->
@@ -604,17 +651,22 @@
     </div>
   </div>
 
-  <!-- Modal: 錯題本（綁定學生帳號・支援管理與練習） -->
+  <!-- Modal: 錯題本（綁定學生帳號・支援跨年段勾選篩選、管理與練習） -->
   <div id="modal-wrong" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[88vh] flex flex-col">
       <div class="flex flex-wrap items-center justify-between gap-2 p-5 border-b">
         <div>
           <h3 class="text-lg font-extrabold text-slate-800">
-            <i class="fa-solid fa-book-bookmark text-rose-600 mr-2"></i><span id="modal-wrong-owner">我的</span>專屬錯題本（<span id="modal-wrong-group">國小</span>組）
+            <i class="fa-solid fa-book-bookmark text-rose-600 mr-2"></i><span id="modal-wrong-owner">我的</span>專屬錯題本（跨年段總覽）
           </h3>
-          <p class="text-xs text-slate-500 mt-0.5">已綁定目前登入帳號，可自由篩選、練習或將已學會的題目移出</p>
+          <p class="text-xs text-slate-500 mt-0.5">顯示所有年段錯題，可自由勾選年段進行篩選、練習或將已學會的題目移出</p>
         </div>
         <button onclick="closeWrongBankModal()" class="text-slate-400 hover:text-slate-700 cursor-pointer p-1"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+
+      <div class="px-4 pt-3 pb-2 bg-rose-50/50 border-b flex flex-wrap items-center gap-2">
+        <span class="text-xs font-bold text-slate-700">顯示年段：</span>
+        <div id="wrong-group-checks" class="flex flex-wrap items-center gap-2"></div>
       </div>
 
       <div class="p-4 bg-slate-50 border-b flex flex-wrap items-center justify-between gap-2">
@@ -628,12 +680,12 @@
         </div>
         <div class="flex flex-wrap items-center gap-1.5">
           <button onclick="startWrongPracticeFromModal()" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold shadow-sm cursor-pointer">
-            <i class="fa-solid fa-play mr-1"></i>練習錯題
+            <i class="fa-solid fa-play mr-1"></i>練習勾選錯題
           </button>
           <button onclick="downloadWrongBankPDF()" class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-bold shadow-sm cursor-pointer">
             <i class="fa-solid fa-file-pdf mr-1"></i>匯出 PDF
           </button>
-          <button onclick="clearCurrentWrongBank()" class="text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 px-3 py-1.5 rounded-lg font-bold cursor-pointer">清空本組</button>
+          <button onclick="clearCurrentWrongBank()" class="text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 px-3 py-1.5 rounded-lg font-bold cursor-pointer">清空勾選年段</button>
         </div>
       </div>
 
@@ -704,7 +756,6 @@
 
     let currentUser = null;
     let activeGroup = "國小";
-    let soundEnabled = true;
     let randomCount = 10;
 
     let quizQueue = [];
@@ -785,6 +836,11 @@
       localStorage.setItem(LS_PROGRESS_PREFIX + currentUser.username, JSON.stringify(prog));
     }
 
+    function getTotalWrongCount() {
+      const prog = getUserProgress();
+      return ["國小", "國中", "高中職", "社會"].reduce((sum, g) => sum + ((prog[g] && prog[g].wrong) ? prog[g].wrong.length : 0), 0);
+    }
+
     function getGroupProgress(grp) {
       const prog = getUserProgress();
       if (!prog[grp]) {
@@ -794,33 +850,8 @@
       return prog[grp];
     }
 
-    // ================= 3. 音效 =================
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    let audioCtx = null;
-    function playTone(freq, dur, type = "sine") {
-      if (!soundEnabled || !AudioCtx) return;
-      try {
-        if (!audioCtx) audioCtx = new AudioCtx();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = type;
-        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-        gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start();
-        osc.stop(audioCtx.currentTime + dur);
-      } catch (e) {}
-    }
-
-    function toggleSound() {
-      soundEnabled = !soundEnabled;
-      document.getElementById("sound-icon").className = soundEnabled ? "fa-solid fa-volume-high" : "fa-solid fa-volume-xmark";
-    }
-
-    // ================= 4. 登入與畫面切換 =================
-    const ALL_VIEWS = ["view-login", "view-group", "view-home", "view-quiz", "view-result", "view-admin", "view-bank-browser"];
+    // ================= 3. 登入與畫面切換 =================
+    const ALL_VIEWS = ["view-login", "view-group", "view-home", "view-quiz", "view-result", "view-admin", "view-bank-browser", "view-leaderboard"];
     function showView(id) {
       ALL_VIEWS.forEach(v => document.getElementById(v).classList.add("hidden"));
       document.getElementById(id).classList.remove("hidden");
@@ -912,6 +943,7 @@
       const sub = document.getElementById("nav-subtitle");
       const grpBtn = document.getElementById("nav-group-btn");
       const grpPrefix = document.getElementById("nav-group-prefix");
+      const grpName = document.getElementById("nav-group-name");
       const wrongBtn = document.getElementById("nav-wrong-btn");
       const userPill = document.getElementById("nav-user-pill");
       if (isAdmin) {
@@ -919,8 +951,9 @@
         header.className = "bg-sky-700 text-white shadow-md sticky top-0 z-40 transition-colors";
         sub.className = "text-[11px] text-sky-100";
         grpBtn.className = "bg-sky-900/60 hover:bg-sky-900/80 border border-sky-300 px-2.5 py-1.5 rounded-lg text-xs md:text-sm font-bold text-sky-50 flex items-center space-x-1.5 transition cursor-pointer";
-        grpPrefix.textContent = "題目試作：";
-        wrongBtn.className = "bg-sky-600 hover:bg-sky-500 text-white border border-sky-400 px-2.5 py-1.5 rounded-lg text-xs md:text-sm font-medium flex items-center space-x-1.5 transition cursor-pointer";
+        grpPrefix.textContent = "題目試作";
+        grpName.classList.add("hidden");
+        wrongBtn.className = "hidden";
         userPill.className = "flex items-center space-x-2 bg-sky-800/80 border border-sky-400 px-2.5 py-1 rounded-lg text-xs md:text-sm";
       } else {
         document.body.style.background = "linear-gradient(135deg, #f0fdf4 0%, #e0f2fe 100%)";
@@ -928,6 +961,7 @@
         sub.className = "text-[11px] text-emerald-200";
         grpBtn.className = "bg-emerald-950/70 hover:bg-emerald-950 border border-emerald-500 px-2.5 py-1.5 rounded-lg text-xs md:text-sm font-bold text-emerald-100 flex items-center space-x-1.5 transition cursor-pointer";
         grpPrefix.textContent = "年段：";
+        grpName.classList.remove("hidden");
         wrongBtn.className = "bg-emerald-700 hover:bg-emerald-600 text-emerald-50 px-2.5 py-1.5 rounded-lg text-xs md:text-sm font-medium flex items-center space-x-1.5 transition cursor-pointer";
         userPill.className = "flex items-center space-x-2 bg-emerald-900/80 border border-emerald-600 px-2.5 py-1 rounded-lg text-xs md:text-sm";
       }
@@ -942,14 +976,15 @@
       applyRoleTheme(isAdmin);
       document.getElementById("app-header").classList.remove("hidden");
       document.getElementById("nav-user-label").textContent = `${userObj.name} (${isAdmin ? "管理者" : "一般"})`;
-      document.getElementById("nav-wrong-btn").classList.remove("hidden");
-      document.getElementById("nav-wrong-count").textContent = getGroupProgress(activeGroup).wrong.length;
+      document.getElementById("nav-wrong-count").textContent = getTotalWrongCount();
       if (isAdmin) {
         document.getElementById("nav-admin-btn").classList.remove("hidden");
         document.getElementById("nav-bank-btn").classList.remove("hidden");
+        document.getElementById("nav-wrong-btn").classList.add("hidden");
       } else {
         document.getElementById("nav-admin-btn").classList.add("hidden");
         document.getElementById("nav-bank-btn").classList.add("hidden");
+        document.getElementById("nav-wrong-btn").classList.remove("hidden");
       }
       updateGroupCountsUI();
       if (isAdmin) {
@@ -1035,7 +1070,7 @@
       document.getElementById("stat-accuracy-sub").textContent = `答對 ${gp.totalCorrect} / ${gp.totalAnswered} 題`;
       document.getElementById("stat-sudden-best").textContent = `${gp.suddenBest} 題`;
       document.getElementById("stat-wrong-count").textContent = `${gp.wrong.length} 題`;
-      document.getElementById("nav-wrong-count").textContent = gp.wrong.length;
+      document.getElementById("nav-wrong-count").textContent = getTotalWrongCount();
     }
 
     // ================= 5. 模式設定與作答 =================
@@ -1127,15 +1162,21 @@
       renderQuestion();
     }
 
+    function getQuizQuestionEntry(entry) {
+      if (typeof entry === "number") {
+        return { grp: activeGroup, qObj: getActiveQuestions()[entry] };
+      }
+      return entry;
+    }
+
     function renderQuestion() {
       if (quizIdx >= quizQueue.length) {
         finishQuiz(true);
         return;
       }
       answeredCurrent = false;
-      const bank = getActiveQuestions();
-      const qObj = bank[quizQueue[quizIdx]];
-      document.getElementById("quiz-cat-badge").textContent = qObj.c;
+      const { grp: qGrp, qObj } = getQuizQuestionEntry(quizQueue[quizIdx]);
+      document.getElementById("quiz-cat-badge").textContent = `${qGrp}組・${qObj.c}`;
       document.getElementById("quiz-progress-text").textContent = quizMode === "sudden_death"
         ? `已連對 ${quizCorrect} 題（第 ${quizIdx + 1} 題）`
         : `第 ${quizIdx + 1} / ${quizQueue.length} 題`;
@@ -1195,14 +1236,13 @@
       answeredCurrent = true;
       stopTimer();
 
-      const bank = getActiveQuestions();
-      const qObj = bank[quizQueue[quizIdx]];
+      const { grp: qGrp, qObj } = getQuizQuestionEntry(quizQueue[quizIdx]);
       const isRight = chosen === qObj.a;
       quizAnswered++;
       if (isRight) quizCorrect++;
 
       const prog = getUserProgress();
-      const gp = prog[activeGroup] || { practiced: [], wrong: [], totalAnswered: 0, totalCorrect: 0, suddenBest: 0 };
+      const gp = prog[qGrp] || { practiced: [], wrong: [], totalAnswered: 0, totalCorrect: 0, suddenBest: 0 };
       if (!gp.practiced.includes(qObj.id)) gp.practiced.push(qObj.id);
       gp.totalAnswered++;
       if (isRight) {
@@ -1211,18 +1251,16 @@
         if (quizMode === "sudden_death" && quizCorrect > gp.suddenBest) {
           gp.suddenBest = quizCorrect;
         }
-        playTone(660, 0.14);
       } else {
         if (!gp.wrong.includes(qObj.id)) gp.wrong.push(qObj.id);
         gp.wrongMeta = gp.wrongMeta || {};
         const prevMeta = gp.wrongMeta[qObj.id] || { count: 0 };
         gp.wrongMeta[qObj.id] = { count: prevMeta.count + 1, lastAt: nowStr() };
         sessionWrongs.push({ qObj, chosen });
-        playTone(220, 0.25, "sawtooth");
       }
-      prog[activeGroup] = gp;
+      prog[qGrp] = gp;
       saveUserProgress(prog);
-      document.getElementById("nav-wrong-count").textContent = gp.wrong.length;
+      document.getElementById("nav-wrong-count").textContent = getTotalWrongCount();
 
       ["A", "B", "C", "D"].forEach(l => {
         const btn = document.getElementById(`opt-btn-${l}`);
@@ -1383,72 +1421,134 @@
       }
     }
 
-    // ================= 6. 錯題本 Modal（帳號綁定・管理・練習・匯出 PDF） =================
+    // ================= 6. 錯題本 Modal（跨年段總覽・勾選篩選・管理・練習・匯出 PDF） =================
+    const ALL_GROUPS = ["國小", "國中", "高中職", "社會"];
+    let selectedWrongGroups = new Set(ALL_GROUPS);
+
     async function openWrongBankModal() {
-      if (!window.__EKC_BANK__[activeGroup]) {
-        await loadGroupBank(activeGroup);
-      }
-      const bank = getActiveQuestions();
-      const byId = new Map(bank.map(q => [q.id, q]));
-      const gp = getGroupProgress(activeGroup);
-
+      selectedWrongGroups = new Set(ALL_GROUPS);
       document.getElementById("modal-wrong-owner").textContent = currentUser ? `${currentUser.name}（${currentUser.username}）的` : "我的";
-      document.getElementById("modal-wrong-group").textContent = activeGroup;
       document.getElementById("wrong-search").value = "";
-
-      const cats = new Set();
-      gp.wrong.forEach(qid => {
-        const q = byId.get(qid);
-        if (q) cats.add(q.c);
-      });
-      document.getElementById("wrong-cat-filter").innerHTML =
-        '<option value="">全部領域</option>' +
-        Array.from(cats).map(c => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join("");
-
-      renderWrongBankList();
       document.getElementById("modal-wrong").classList.remove("hidden");
+
+      const body = document.getElementById("wrong-list-body");
+      body.innerHTML = '<div class="text-center text-slate-500 py-8"><i class="fa-solid fa-spinner fa-spin mr-1.5"></i>正在載入各年段錯題...</div>';
+
+      const prog = getUserProgress();
+      const groupsToLoad = ALL_GROUPS.filter(g => prog[g] && prog[g].wrong && prog[g].wrong.length > 0 && !window.__EKC_BANK__[g]);
+      await Promise.all(groupsToLoad.map(g => loadGroupBank(g).catch(() => null)));
+
+      renderWrongGroupCheckboxes();
+      refreshWrongCategoryFilter();
+      renderWrongBankList();
+    }
+
+    function renderWrongGroupCheckboxes() {
+      const prog = getUserProgress();
+      const wrap = document.getElementById("wrong-group-checks");
+      wrap.innerHTML = ALL_GROUPS.map(g => {
+        const cnt = (prog[g] && prog[g].wrong) ? prog[g].wrong.length : 0;
+        const checked = selectedWrongGroups.has(g) ? "checked" : "";
+        return `
+          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-700 cursor-pointer hover:bg-rose-50">
+            <input type="checkbox" value="${g}" ${checked} onchange="onWrongGroupToggle(this)" class="w-3.5 h-3.5 text-rose-600 rounded">
+            <span>${g}組 (${cnt})</span>
+          </label>
+        `;
+      }).join("");
+    }
+
+    async function onWrongGroupToggle(cb) {
+      const g = cb.value;
+      if (cb.checked) {
+        selectedWrongGroups.add(g);
+        if (!window.__EKC_BANK__[g]) {
+          await loadGroupBank(g).catch(() => null);
+        }
+      } else {
+        selectedWrongGroups.delete(g);
+      }
+      refreshWrongCategoryFilter();
+      renderWrongBankList();
+    }
+
+    function refreshWrongCategoryFilter() {
+      const prog = getUserProgress();
+      const cats = new Set();
+      ALL_GROUPS.forEach(g => {
+        if (!selectedWrongGroups.has(g)) return;
+        const gp = prog[g];
+        const bank = window.__EKC_BANK__[g] || [];
+        if (!gp || !gp.wrong || bank.length === 0) return;
+        const byId = new Map(bank.map(q => [q.id, q]));
+        gp.wrong.forEach(qid => {
+          const q = byId.get(qid);
+          if (q) cats.add(q.c);
+        });
+      });
+      const sel = document.getElementById("wrong-cat-filter");
+      const prev = sel.value;
+      sel.innerHTML = '<option value="">全部領域</option>' +
+        Array.from(cats).map(c => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join("");
+      if (prev && cats.has(prev)) sel.value = prev;
     }
 
     function getFilteredWrongQuestions() {
-      const bank = getActiveQuestions();
-      const byId = new Map(bank.map(q => [q.id, q]));
-      const gp = getGroupProgress(activeGroup);
+      const prog = getUserProgress();
       const kw = (document.getElementById("wrong-search").value || "").trim().toLowerCase();
       const cat = document.getElementById("wrong-cat-filter").value;
+      const items = [];
 
-      return gp.wrong
-        .map(qid => byId.get(qid))
-        .filter(q => q && (!cat || q.c === cat) && (!kw || q.q.toLowerCase().includes(kw) || q.e.toLowerCase().includes(kw)));
+      ALL_GROUPS.forEach(g => {
+        if (!selectedWrongGroups.has(g)) return;
+        const gp = prog[g];
+        const bank = window.__EKC_BANK__[g] || [];
+        if (!gp || !gp.wrong || bank.length === 0) return;
+        const byId = new Map(bank.map(q => [q.id, q]));
+        const meta = gp.wrongMeta || {};
+        gp.wrong.forEach(qid => {
+          const q = byId.get(qid);
+          if (!q) return;
+          if (cat && q.c !== cat) return;
+          if (kw && !q.q.toLowerCase().includes(kw) && !q.e.toLowerCase().includes(kw)) return;
+          items.push({ grp: g, qObj: q, meta: meta[qid] || null });
+        });
+      });
+      return items;
     }
 
     function renderWrongBankList() {
-      const gp = getGroupProgress(activeGroup);
-      const meta = gp.wrongMeta || {};
       const list = getFilteredWrongQuestions();
       document.getElementById("wrong-filtered-count").textContent = list.length;
       const body = document.getElementById("wrong-list-body");
 
-      if (gp.wrong.length === 0) {
-        body.innerHTML = '<div class="text-center text-slate-400 py-10">目前本年段沒有錯題紀錄！</div>';
+      if (getTotalWrongCount() === 0) {
+        body.innerHTML = '<div class="text-center text-slate-400 py-10">目前所有年段皆沒有錯題紀錄！</div>';
+        return;
+      }
+      if (selectedWrongGroups.size === 0) {
+        body.innerHTML = '<div class="text-center text-slate-400 py-10">請至少勾選一個年段以顯示錯題。</div>';
         return;
       }
       if (list.length === 0) {
-        body.innerHTML = '<div class="text-center text-slate-400 py-10">沒有符合搜尋或篩選條件的錯題。</div>';
+        body.innerHTML = '<div class="text-center text-slate-400 py-10">勾選的年段內沒有符合搜尋或篩選條件的錯題。</div>';
         return;
       }
 
-      body.innerHTML = list.map((q, i) => {
-        const m = meta[q.id];
+      body.innerHTML = list.map((item, i) => {
+        const q = item.qObj;
+        const m = item.meta;
         const cntBadge = m && m.count ? `<span class="bg-rose-100 text-rose-700 px-2 py-0.5 rounded font-bold">錯 ${m.count} 次</span>` : "";
         return `
           <div class="border border-slate-200 rounded-xl p-3.5 bg-slate-50/70 space-y-1.5">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div class="flex flex-wrap items-center gap-1.5 text-[11px]">
+                <span class="bg-sky-100 text-sky-800 px-2 py-0.5 rounded font-bold">${escapeHtml(item.grp)}組</span>
                 <span class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">${escapeHtml(q.c)}</span>
                 ${cntBadge}
                 <span class="text-slate-400">${q.s ? escapeHtml(q.s) : ""}</span>
               </div>
-              <button onclick="removeWrongQuestion(${q.id})" class="text-xs bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-300 px-2.5 py-1 rounded-lg font-bold cursor-pointer">
+              <button onclick="removeWrongQuestion('${escapeAttr(item.grp)}', ${q.id})" class="text-xs bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-300 px-2.5 py-1 rounded-lg font-bold cursor-pointer">
                 <i class="fa-solid fa-check mr-1"></i>已學會／移出
               </button>
             </div>
@@ -1461,41 +1561,39 @@
       }).join("");
     }
 
-    function removeWrongQuestion(qid) {
+    function removeWrongQuestion(grp, qid) {
       const prog = getUserProgress();
-      const gp = prog[activeGroup];
+      const gp = prog[grp];
       if (!gp) return;
       gp.wrong = gp.wrong.filter(id => id !== qid);
       if (gp.wrongMeta) delete gp.wrongMeta[qid];
       saveUserProgress(prog);
-      refreshStatsUI();
+      document.getElementById("nav-wrong-count").textContent = getTotalWrongCount();
+      if (getActiveQuestions().length > 0) refreshStatsUI();
+      renderWrongGroupCheckboxes();
       renderWrongBankList();
     }
 
     function startWrongPracticeFromModal() {
       const list = getFilteredWrongQuestions();
       if (list.length === 0) {
-        alert("目前沒有可練習的錯題！");
+        alert("目前勾選的篩選條件下沒有可練習的錯題！");
         return;
       }
       closeWrongBankModal();
-      const bank = getActiveQuestions();
-      const targetIds = new Set(list.map(q => q.id));
-      const indices = [];
-      bank.forEach((q, idx) => { if (targetIds.has(q.id)) indices.push(idx); });
 
       quizMode = "wrong";
-      quizQueue = shuffle(indices);
+      quizQueue = shuffle(list.map(item => ({ grp: item.grp, qObj: item.qObj })));
       quizIdx = 0;
       quizCorrect = 0;
       quizAnswered = 0;
       sessionWrongs = [];
       quizStartTime = Date.now();
 
+      const grpLabel = Array.from(selectedWrongGroups).join("、") || activeGroup;
       const catFilter = document.getElementById("wrong-cat-filter").value;
-      const modeLabel = catFilter ? `錯題本重測（${catFilter}）` : "錯題本重測";
-      addLog("開始測驗", activeGroup, modeLabel, `預計 ${quizQueue.length} 題`);
-      document.getElementById("quiz-mode-badge").textContent = `${activeGroup}組・${modeLabel}`;
+      const modeLabel = catFilter ? `錯題本重測（${grpLabel}｜${catFilter}）` : `錯題本重測（${grpLabel}）`;
+      document.getElementById("quiz-mode-badge").textContent = modeLabel;
       showView("view-quiz");
       renderQuestion();
     }
@@ -1506,7 +1604,7 @@
         alert("目前沒有可匯出的錯題！");
         return;
       }
-      sessionWrongs = list.map(q => ({ qObj: q, chosen: null }));
+      sessionWrongs = list.map(item => ({ qObj: item.qObj, chosen: null }));
       downloadSessionWrongsPDF();
     }
 
@@ -1515,14 +1613,23 @@
     }
 
     function clearCurrentWrongBank() {
-      if (!confirm(`確定要清空「${activeGroup}組」的所有錯題紀錄嗎？`)) return;
-      const prog = getUserProgress();
-      if (prog[activeGroup]) {
-        prog[activeGroup].wrong = [];
-        prog[activeGroup].wrongMeta = {};
-        saveUserProgress(prog);
+      const targets = Array.from(selectedWrongGroups);
+      if (targets.length === 0) {
+        alert("請先勾選要清空的年段！");
+        return;
       }
-      refreshStatsUI();
+      if (!confirm(`確定要清空已勾選年段（${targets.join("、")}）的所有錯題紀錄嗎？`)) return;
+      const prog = getUserProgress();
+      targets.forEach(g => {
+        if (prog[g]) {
+          prog[g].wrong = [];
+          prog[g].wrongMeta = {};
+        }
+      });
+      saveUserProgress(prog);
+      document.getElementById("nav-wrong-count").textContent = getTotalWrongCount();
+      if (getActiveQuestions().length > 0) refreshStatsUI();
+      renderWrongGroupCheckboxes();
       renderWrongBankList();
     }
 
@@ -1692,6 +1799,88 @@
       bankBrowserPage += delta;
       renderBankBrowserList(false);
       window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    // ================= 6C. 積分排行榜 =================
+    function openLeaderboard() {
+      if (!currentUser) return;
+      stopTimer();
+      showView("view-leaderboard");
+      renderLeaderboard();
+    }
+
+    function closeLeaderboard() {
+      if (currentUser && currentUser.role === "admin") {
+        openAdminView();
+      } else if (getActiveQuestions().length > 0) {
+        goHome();
+      } else {
+        showGroupSelect();
+      }
+    }
+
+    function renderLeaderboard() {
+      const grpFilter = document.getElementById("lb-group-filter").value;
+      const students = getUsers().filter(u => u.role === "user");
+      const groupsToSum = grpFilter ? [grpFilter] : ["國小", "國中", "高中職", "社會"];
+
+      const rows = students.map(s => {
+        const prog = getStudentProgressByUsername(s.username);
+        let correct = 0;
+        let answered = 0;
+        let suddenBest = 0;
+        groupsToSum.forEach(g => {
+          const gp = prog[g];
+          if (gp) {
+            correct += gp.totalCorrect || 0;
+            answered += gp.totalAnswered || 0;
+            if ((gp.suddenBest || 0) > suddenBest) suddenBest = gp.suddenBest || 0;
+          }
+        });
+        const acc = answered > 0 ? ((correct / answered) * 100).toFixed(1) : "0.0";
+        return {
+          username: s.username,
+          name: s.name,
+          status: s.status,
+          score: correct,
+          answered,
+          acc,
+          suddenBest
+        };
+      });
+
+      const sortBy = document.getElementById("lb-sort-by").value;
+      if (sortBy === "accuracy") {
+        rows.sort((a, b) => Number(b.acc) - Number(a.acc) || b.score - a.score || b.suddenBest - a.suddenBest);
+      } else if (sortBy === "sudden") {
+        rows.sort((a, b) => b.suddenBest - a.suddenBest || b.score - a.score || Number(b.acc) - Number(a.acc));
+      } else {
+        rows.sort((a, b) => b.score - a.score || Number(b.acc) - Number(a.acc) || b.suddenBest - a.suddenBest);
+      }
+
+      const tbody = document.getElementById("leaderboard-tbody");
+      if (rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-slate-400">目前尚無學生名單</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = rows.map((r, idx) => {
+        const rank = idx + 1;
+        const rankBadge = rank === 1 ? "🥇 1" : rank === 2 ? "🥈 2" : rank === 3 ? "🥉 3" : String(rank);
+        const isMe = currentUser && currentUser.username === r.username;
+        const rowCls = isMe ? "bg-amber-50/80 font-bold" : "hover:bg-slate-50";
+        const disabledTag = r.status === "disabled" ? ' <span class="text-[10px] bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded">停用</span>' : "";
+        return `
+          <tr class="${rowCls}">
+            <td class="px-4 py-3 text-center font-black text-base">${rankBadge}</td>
+            <td class="px-4 py-3 text-slate-800">${escapeHtml(r.name)} <span class="text-xs font-normal text-slate-500">(${escapeHtml(r.username)})</span>${isMe ? ' <span class="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">我</span>' : ""}${disabledTag}</td>
+            <td class="px-4 py-3 text-right font-black text-amber-700 text-base">${r.score} 分</td>
+            <td class="px-4 py-3 text-right text-slate-600">${r.answered} 題</td>
+            <td class="px-4 py-3 text-right text-blue-700 font-bold">${r.acc}%</td>
+            <td class="px-4 py-3 text-right text-indigo-700 font-bold">${r.suddenBest} 題</td>
+          </tr>
+        `;
+      }).join("");
     }
 
     // ================= 7. 管理者後台 =================
@@ -1889,6 +2078,7 @@
       document.getElementById("form-user-err").classList.add("hidden");
       document.getElementById("edit-user-orig").value = editUsername;
       const unameInput = document.getElementById("form-username");
+      const roleSelect = document.getElementById("form-role");
 
       if (editUsername) {
         const u = getUsers().find(x => x.username === editUsername);
@@ -1898,7 +2088,9 @@
         document.getElementById("form-name").value = u.name;
         document.getElementById("form-password").value = "";
         document.getElementById("pwd-hint").textContent = "（留空則維持原密碼）";
-        document.getElementById("form-role").value = u.role;
+        roleSelect.value = u.role;
+        roleSelect.disabled = true;
+        roleSelect.className = "w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-slate-100 text-slate-500 cursor-not-allowed";
         document.getElementById("form-group").value = u.defaultGroup || "國小";
       } else {
         document.getElementById("modal-user-title").textContent = "新增使用者";
@@ -1907,7 +2099,9 @@
         document.getElementById("form-name").value = "";
         document.getElementById("form-password").value = "";
         document.getElementById("pwd-hint").textContent = "（必填）";
-        document.getElementById("form-role").value = "user";
+        roleSelect.value = "user";
+        roleSelect.disabled = false;
+        roleSelect.className = "w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white";
         document.getElementById("form-group").value = "國小";
       }
       onFormRoleChange();
@@ -1932,23 +2126,11 @@
       if (orig) {
         const target = users.find(u => u.username === orig);
         if (!target) return;
-        const activeAdmins = users.filter(u => u.role === "admin" && u.status !== "disabled");
-        if (target.role === "admin" && role !== "admin" && activeAdmins.length <= 1) {
-          err.textContent = "系統至少需保留一位啟用中的管理者！";
-          err.classList.remove("hidden");
-          return;
-        }
-        if (role === "admin" && !target.password && !pwd) {
-          err.textContent = "升級為管理者時請設定密碼！";
-          err.classList.remove("hidden");
-          return;
-        }
         target.name = name;
         if (pwd) target.password = pwd;
-        target.role = role;
         target.defaultGroup = grp;
         saveUsers(users);
-        addLog("帳號管理", grp, `編輯使用者：${uname}（${role === "admin" ? "管理者" : "一般使用者"}）`);
+        addLog("帳號管理", grp, `編輯使用者：${uname}（${target.role === "admin" ? "管理者" : "一般使用者"}）`);
       } else {
         if (!pwd) {
           err.textContent = "新增使用者時必須設定登入密碼！";
@@ -2005,12 +2187,18 @@
       const logs = JSON.parse(localStorage.getItem(LS_LOGS_KEY) || "[]");
       const stu = document.getElementById("log-filter-student").value;
       const grp = document.getElementById("log-filter-group").value;
-      return logs.filter(l =>
-        l.role !== "管理者" &&
-        l.action === "完成測驗" &&
-        (!stu || l.username === stu) &&
-        (!grp || l.group === grp)
-      );
+      const res = [];
+      logs.forEach((l, rawIdx) => {
+        if (
+          l.role !== "管理者" &&
+          l.action === "完成測驗" &&
+          (!stu || l.username === stu) &&
+          (!grp || l.group === grp)
+        ) {
+          res.push({ ...l, _rawIdx: rawIdx });
+        }
+      });
+      return res;
     }
 
     function renderLogsTable() {
@@ -2028,7 +2216,7 @@
 
       const tbody = document.getElementById("admin-logs-tbody");
       if (logs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-slate-400">尚無符合條件的學生使用紀錄</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-slate-400">尚無符合條件的學生使用紀錄</td></tr>';
         return;
       }
       tbody.innerHTML = logs.slice(0, 500).map(l => `
@@ -2039,8 +2227,21 @@
           <td class="px-3 py-2">${escapeHtml(l.detail)}</td>
           <td class="px-3 py-2 font-bold text-emerald-700 whitespace-nowrap">${escapeHtml(l.score)}</td>
           <td class="px-3 py-2 text-slate-600 whitespace-nowrap">${escapeHtml(l.duration)}</td>
+          <td class="px-3 py-2 text-right whitespace-nowrap">
+            <button onclick="deleteSingleLog(${l._rawIdx})" class="text-xs px-2.5 py-1 rounded bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold cursor-pointer">刪除</button>
+          </td>
         </tr>
       `).join("");
+    }
+
+    function deleteSingleLog(rawIdx) {
+      const logs = JSON.parse(localStorage.getItem(LS_LOGS_KEY) || "[]");
+      if (rawIdx < 0 || rawIdx >= logs.length) return;
+      const target = logs[rawIdx];
+      if (!confirm(`確定要刪除「${target.name}」於 ${target.time} 的這筆使用紀錄嗎？`)) return;
+      logs.splice(rawIdx, 1);
+      localStorage.setItem(LS_LOGS_KEY, JSON.stringify(logs));
+      renderLogsTable();
     }
 
     function exportLogsCSV() {
@@ -2056,7 +2257,7 @@
     }
 
     function exportLogsJSON() {
-      const logs = getFilteredLogs();
+      const logs = getFilteredLogs().map(({ _rawIdx, ...rest }) => rest);
       const blob = new Blob([JSON.stringify(logs, null, 2)], { type: "application/json;charset=utf-8;" });
       downloadBlob(blob, `環境知識競賽_使用紀錄_${new Date().toISOString().slice(0,10)}.json`);
     }
