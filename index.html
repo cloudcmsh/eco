@@ -93,6 +93,9 @@
         <div class="text-5xl mb-2">🌿</div>
         <h2 class="text-2xl font-extrabold text-emerald-950">環境知識競賽題庫系統</h2>
         <p class="text-xs md:text-sm text-slate-500 mt-1">國小・國中・高中職・社會 分級訓練平台</p>
+        <div id="cloud-status-badge" class="inline-block mt-2 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500">
+          <i class="fa-solid fa-cloud mr-1"></i>正在連線雲端資料庫...
+        </div>
       </div>
 
       <!-- 登入身分切換 Tab -->
@@ -622,13 +625,13 @@
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">角色權限</label>
+            <label class="block text-xs font-bold text-slate-700 mb-1">角色權限 <span id="role-lock-hint" class="hidden font-normal text-slate-400">（不可修改）</span></label>
             <select id="form-role" onchange="onFormRoleChange()" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white">
               <option value="user">一般使用者</option>
               <option value="admin">管理者</option>
             </select>
           </div>
-          <div>
+          <div id="form-group-wrap">
             <label class="block text-xs font-bold text-slate-700 mb-1">預設年段</label>
             <select id="form-group" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white">
               <option value="國小">國小</option>
@@ -699,12 +702,90 @@
   <script>
     // ================= 1. 按需載入各年段題庫 =================
     window.__EKC_BANK__ = window.__EKC_BANK__ || {};
-    const GROUP_COUNTS = {"國小": 2355, "國中": 2310, "高中職": 2327, "社會": 2373};
+    const GROUP_COUNTS = {"國小": 2529, "國中": 2530, "高中職": 2575, "社會": 2631};
 
     const LS_ANS_OVERRIDES_KEY = "ekc_sys_ans_overrides_v1";
 
     function getAnswerOverrides() {
       return JSON.parse(localStorage.getItem(LS_ANS_OVERRIDES_KEY) || "{}");
+    }
+
+    function migrateGroupIds(grp) {
+      const legacyArr = (window.__EKC_LEGACY_ARR__ && window.__EKC_LEGACY_ARR__[grp]) || [];
+      if (!legacyArr.length) return;
+      const toStableId = (id) => {
+        const n = Number(id);
+        if (!Number.isInteger(n) || n <= 0) return n;
+        if (n >= 10000000) return n;
+        return (n <= legacyArr.length && legacyArr[n - 1] > 0) ? legacyArr[n - 1] : n;
+      };
+
+      // 1. 轉換答案更正覆寫表中的舊題號
+      const allOv = getAnswerOverrides();
+      if (allOv[grp]) {
+        let ovChanged = false;
+        const newOv = {};
+        Object.keys(allOv[grp]).forEach(k => {
+          const nk = String(toStableId(k));
+          if (nk !== k) ovChanged = true;
+          newOv[nk] = allOv[grp][k];
+        });
+        if (ovChanged) {
+          allOv[grp] = newOv;
+          localStorage.setItem(LS_ANS_OVERRIDES_KEY, JSON.stringify(allOv));
+        }
+      }
+
+      // 2. 轉換本機所有使用者的舊進度／錯題題號
+      for (let i = 0; i < localStorage.length; i++) {
+        const lsKey = localStorage.key(i);
+        if (!lsKey || !lsKey.startsWith(LS_PROGRESS_PREFIX)) continue;
+        try {
+          const prog = JSON.parse(localStorage.getItem(lsKey) || "{}");
+          const gp = prog[grp];
+          if (!gp) continue;
+          let changed = false;
+
+          if (Array.isArray(gp.practiced)) {
+            const mapped = [];
+            const seen = new Set();
+            gp.practiced.forEach(id => {
+              const nid = toStableId(id);
+              if (nid !== Number(id)) changed = true;
+              if (!seen.has(nid)) { seen.add(nid); mapped.push(nid); }
+            });
+            gp.practiced = mapped;
+          }
+          if (Array.isArray(gp.wrong)) {
+            const mapped = [];
+            const seen = new Set();
+            gp.wrong.forEach(id => {
+              const nid = toStableId(id);
+              if (nid !== Number(id)) changed = true;
+              if (!seen.has(nid)) { seen.add(nid); mapped.push(nid); }
+            });
+            gp.wrong = mapped;
+          }
+          if (gp.wrongMeta && typeof gp.wrongMeta === "object") {
+            const newMeta = {};
+            Object.keys(gp.wrongMeta).forEach(k => {
+              const nk = String(toStableId(k));
+              if (nk !== k) changed = true;
+              const cur = gp.wrongMeta[k];
+              if (newMeta[nk]) {
+                newMeta[nk].count = (Number(newMeta[nk].count) || 1) + (Number(cur && cur.count) || 1);
+                if (cur && cur.lastAt && (!newMeta[nk].lastAt || cur.lastAt > newMeta[nk].lastAt)) {
+                  newMeta[nk].lastAt = cur.lastAt;
+                }
+              } else {
+                newMeta[nk] = cur;
+              }
+            });
+            gp.wrongMeta = newMeta;
+          }
+          if (changed) localStorage.setItem(lsKey, JSON.stringify(prog));
+        } catch (e) {}
+      }
     }
 
     function applyAnswerOverrides(grp) {
@@ -720,6 +801,7 @@
     function loadGroupBank(grp) {
       return new Promise((resolve, reject) => {
         if (window.__EKC_BANK__[grp]) {
+          migrateGroupIds(grp);
           applyAnswerOverrides(grp);
           resolve(window.__EKC_BANK__[grp]);
           return;
@@ -731,6 +813,7 @@
         script.onload = () => {
           if (banner) banner.classList.add("hidden");
           if (window.__EKC_BANK__[grp]) {
+            migrateGroupIds(grp);
             applyAnswerOverrides(grp);
             resolve(window.__EKC_BANK__[grp]);
           } else {
@@ -749,10 +832,77 @@
       return window.__EKC_BANK__[activeGroup] || [];
     }
 
-    // ================= 2. 儲存與狀態 =================
+    // ================= 2. 雲端 API 與本地快取 =================
+    const GAS_API_URL = "https://script.google.com/macros/s/AKfycbwFVNnO4BN_CVgoSGG0KVLtNiSh4d3W23SNbe94swL9pocRhWxbiF-nk-kZmsNQRQNxBA/exec";
     const LS_USERS_KEY = "ekc_sys_users_v4";
     const LS_LOGS_KEY = "ekc_sys_logs_v2";
+    const LS_CLOUD_LB_KEY = "ekc_sys_cloud_lb_v1";
     const LS_PROGRESS_PREFIX = "ekc_sys_prog_v2_";
+
+    let cloudConnected = false;
+    let authToken = "";
+    let cloudLogsCache = null;
+    let cloudLeaderboardCache = JSON.parse(localStorage.getItem(LS_CLOUD_LB_KEY) || "null");
+
+    async function apiGet(action, params = {}) {
+      const queryObj = { action, ...params };
+      if (authToken && queryObj.token === undefined) queryObj.token = authToken;
+      const qs = new URLSearchParams(queryObj).toString();
+      const resp = await fetch(`${GAS_API_URL}?${qs}`, { method: "GET" });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      if (!data.ok) throw new Error(data.error || "API 錯誤");
+      return data;
+    }
+
+    async function apiPost(payload) {
+      const bodyObj = (authToken && payload && payload.action !== "login" && payload.token === undefined)
+        ? { ...payload, token: authToken }
+        : payload;
+      const resp = await fetch(GAS_API_URL, {
+        method: "POST",
+        body: JSON.stringify(bodyObj)
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      if (!data.ok) throw new Error(data.error || "API 錯誤");
+      return data;
+    }
+
+    function setCloudBadge(ok, msg) {
+      const el = document.getElementById("cloud-status-badge");
+      if (!el) return;
+      if (ok) {
+        el.className = "inline-block mt-2 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800";
+        el.innerHTML = `<i class="fa-solid fa-cloud-check mr-1"></i>${escapeHtml(msg || "Google 雲端資料庫已連線")}`;
+      } else {
+        el.className = "inline-block mt-2 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800";
+        el.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i>${escapeHtml(msg || "離線快取模式")}`;
+      }
+    }
+
+    async function bootstrapFromCloud() {
+      try {
+        const data = await apiGet("bootstrap");
+        cloudConnected = true;
+        if (Array.isArray(data.users)) {
+          saveUsers(data.users);
+          populateUserDropdown();
+        }
+        if (data.overrides && typeof data.overrides === "object") {
+          localStorage.setItem(LS_ANS_OVERRIDES_KEY, JSON.stringify(data.overrides));
+          Object.keys(window.__EKC_BANK__ || {}).forEach(g => applyAnswerOverrides(g));
+        }
+        if (Array.isArray(data.leaderboard)) {
+          cloudLeaderboardCache = data.leaderboard;
+          localStorage.setItem(LS_CLOUD_LB_KEY, JSON.stringify(data.leaderboard));
+        }
+        setCloudBadge(true, "Google 雲端資料庫已連線");
+      } catch (err) {
+        cloudConnected = false;
+        setCloudBadge(false, "離線快取模式（無法連線雲端）");
+      }
+    }
 
     let currentUser = null;
     let activeGroup = "國小";
@@ -780,7 +930,7 @@
           }));
         } else {
           users = [
-            { username: "admin", password: "1234", name: "系統管理者", role: "admin", defaultGroup: "國小", status: "active", createdAt: nowStr() },
+            { username: "admin", password: "1234", name: "系統管理者", role: "admin", defaultGroup: "", status: "active", createdAt: nowStr() },
             { username: "student01", password: "1234", name: "王小明", role: "user", defaultGroup: "國小", status: "active", createdAt: nowStr() },
             { username: "student02", password: "1234", name: "林小華", role: "user", defaultGroup: "國中", status: "active", createdAt: nowStr() }
           ];
@@ -900,42 +1050,65 @@
       }
     }
 
-    function handleUserDropdownLogin(e) {
+    async function handleUserDropdownLogin(e) {
       e.preventDefault();
       const uname = document.getElementById("login-user-select").value;
       const pwd = document.getElementById("login-user-password").value;
       const errEl = document.getElementById("user-login-error");
-      const found = getUsers().find(u => u.username === uname && u.role === "user" && u.status !== "disabled");
-      if (!found) return;
-      if (pwd !== (found.password || "")) {
-        errEl.textContent = "登入密碼錯誤，請重新確認或洽管理者重設。";
-        errEl.classList.remove("hidden");
-        return;
+      const btn = document.getElementById("btn-user-login");
+      const origBtn = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i>正在驗證登入...';
+
+      try {
+        const res = await apiPost({ action: "login", username: uname, password: pwd, role: "user" });
+        cloudConnected = true;
+        authToken = res.token || "";
+        if (res.progress) {
+          localStorage.setItem(LS_PROGRESS_PREFIX + res.user.username, JSON.stringify(res.progress));
+        }
+        errEl.classList.add("hidden");
+        document.getElementById("login-user-password").value = "";
+        completeLogin(res.user);
+      } catch (err) {
+        // 若網路離線且有本地快取密碼時可降級驗證，否則顯示錯誤
+        const found = getUsers().find(u => u.username === uname && u.role === "user" && u.status !== "disabled");
+        if (!cloudConnected && found && found.password && pwd === found.password) {
+          errEl.classList.add("hidden");
+          document.getElementById("login-user-password").value = "";
+          completeLogin(found);
+        } else {
+          errEl.textContent = err.message || "登入密碼錯誤，請重新確認或洽管理者重設。";
+          errEl.classList.remove("hidden");
+        }
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = origBtn;
       }
-      errEl.classList.add("hidden");
-      document.getElementById("login-user-password").value = "";
-      completeLogin(found);
     }
 
-    function handleAdminLogin(e) {
+    async function handleAdminLogin(e) {
       e.preventDefault();
       const uname = document.getElementById("login-username").value.trim();
       const pwd = document.getElementById("login-password").value;
       const errEl = document.getElementById("login-error");
-      const found = getUsers().find(u => u.username === uname && u.password === pwd && u.role === "admin");
 
-      if (!found) {
-        errEl.textContent = "管理者帳號或密碼錯誤。";
-        errEl.classList.remove("hidden");
-        return;
+      try {
+        const res = await apiPost({ action: "login", username: uname, password: pwd, role: "admin" });
+        cloudConnected = true;
+        authToken = res.token || "";
+        errEl.classList.add("hidden");
+        completeLogin(res.user);
+      } catch (err) {
+        const found = getUsers().find(u => u.username === uname && u.password === pwd && u.role === "admin");
+        if (!cloudConnected && found && found.status !== "disabled") {
+          errEl.classList.add("hidden");
+          completeLogin(found);
+        } else {
+          errEl.textContent = err.message || "管理者帳號或密碼錯誤。";
+          errEl.classList.remove("hidden");
+        }
       }
-      if (found.status === "disabled") {
-        errEl.textContent = "此管理者帳號已被停用。";
-        errEl.classList.remove("hidden");
-        return;
-      }
-      errEl.classList.add("hidden");
-      completeLogin(found);
     }
 
     function applyRoleTheme(isAdmin) {
@@ -998,6 +1171,7 @@
       stopTimer();
       addLog("登出", activeGroup, "登出系統");
       currentUser = null;
+      authToken = "";
       applyRoleTheme(false);
       document.getElementById("app-header").classList.add("hidden");
       document.getElementById("login-password").value = "";
@@ -1317,7 +1491,40 @@
       const sec = Math.max(1, Math.round((Date.now() - quizStartTime) / 1000));
       const acc = quizAnswered ? ((quizCorrect / quizAnswered) * 100).toFixed(1) : "0.0";
       const modeName = document.getElementById("quiz-mode-badge").textContent;
-      addLog("完成測驗", activeGroup, `${modeName}${aborted ? "（提前結束）" : ""}`, `${quizCorrect}/${quizAnswered} (${acc}%)`, sec);
+      const logDetail = `${modeName}${aborted ? "（提前結束）" : ""}`;
+      const logScore = `${quizCorrect}/${quizAnswered} (${acc}%)`;
+      addLog("完成測驗", activeGroup, logDetail, logScore, sec);
+
+      if (currentUser && currentUser.role === "user" && quizAnswered > 0) {
+        const prog = getUserProgress();
+        const payloadProg = {};
+        const groupsTouched = quizMode === "wrong"
+          ? Array.from(new Set(quizQueue.slice(0, quizAnswered).map(e => getQuizQuestionEntry(e).grp)))
+          : [activeGroup];
+        groupsTouched.forEach(g => {
+          if (prog[g]) payloadProg[g] = prog[g];
+        });
+        const logEntry = {
+          id: `${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+          time: nowStr(),
+          group: activeGroup,
+          detail: logDetail,
+          score: logScore,
+          durationSec: sec
+        };
+        apiPost({
+          action: "syncQuizResult",
+          username: currentUser.username,
+          name: currentUser.name,
+          progress: payloadProg,
+          log: logEntry
+        }).then(res => {
+          if (Array.isArray(res.leaderboard)) {
+            cloudLeaderboardCache = res.leaderboard;
+            localStorage.setItem(LS_CLOUD_LB_KEY, JSON.stringify(res.leaderboard));
+          }
+        }).catch(() => {});
+      }
 
       document.getElementById("res-icon").textContent = completed && Number(acc) >= 80 ? "🏆" : "📝";
       document.getElementById("res-title").textContent = aborted ? "已結束本局練習" : (quizMode === "sudden_death" && !completed ? "驟死賽挑戰結束！" : "測驗完成！");
@@ -1548,7 +1755,7 @@
                 ${cntBadge}
                 <span class="text-slate-400">${q.s ? escapeHtml(q.s) : ""}</span>
               </div>
-              <button onclick="removeWrongQuestion('${escapeAttr(item.grp)}', ${q.id})" class="text-xs bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-300 px-2.5 py-1 rounded-lg font-bold cursor-pointer">
+              <button data-grp="${escapeAttr(item.grp)}" data-qid="${Number(q.id)}" onclick="removeWrongQuestion(this.dataset.grp, Number(this.dataset.qid))" class="text-xs bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-300 px-2.5 py-1 rounded-lg font-bold cursor-pointer">
                 <i class="fa-solid fa-check mr-1"></i>已學會／移出
               </button>
             </div>
@@ -1572,6 +1779,9 @@
       if (getActiveQuestions().length > 0) refreshStatsUI();
       renderWrongGroupCheckboxes();
       renderWrongBankList();
+      if (currentUser && currentUser.role === "user") {
+        apiPost({ action: "removeWrong", username: currentUser.username, group: grp, qid }).catch(() => {});
+      }
     }
 
     function startWrongPracticeFromModal() {
@@ -1631,6 +1841,9 @@
       if (getActiveQuestions().length > 0) refreshStatsUI();
       renderWrongGroupCheckboxes();
       renderWrongBankList();
+      if (currentUser && currentUser.role === "user") {
+        apiPost({ action: "clearWrongs", username: currentUser.username, groups: targets }).catch(() => {});
+      }
     }
 
     // ================= 6B. 管理者檢視各組題庫 =================
@@ -1701,7 +1914,7 @@
         }).join("");
         const editBtns = letters.map(L => {
           const active = L === q.a;
-          return `<button onclick="updateQuestionAnswer('${escapeAttr(grp)}', ${q.id}, '${L}')" class="px-2.5 py-1 rounded text-xs font-bold border transition cursor-pointer ${active ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-600 border-slate-300 hover:bg-sky-50"}">${L}</button>`;
+          return `<button data-grp="${escapeAttr(grp)}" data-qid="${Number(q.id)}" data-ans="${L}" onclick="updateQuestionAnswer(this.dataset.grp, Number(this.dataset.qid), this.dataset.ans)" class="px-2.5 py-1 rounded text-xs font-bold border transition cursor-pointer ${active ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-600 border-slate-300 hover:bg-sky-50"}">${L}</button>`;
         }).join("");
         return `
           <div class="bg-white border border-sky-200 rounded-xl p-4 shadow-sm space-y-2">
@@ -1743,7 +1956,7 @@
       }
     }
 
-    function updateQuestionAnswer(grp, qid, newAns) {
+    async function updateQuestionAnswer(grp, qid, newAns) {
       const bank = window.__EKC_BANK__[grp];
       if (!bank) return;
       const q = bank.find(item => item.id === qid);
@@ -1757,8 +1970,28 @@
 
       renderBankBrowserList(false);
       const toast = document.getElementById("bank-save-toast");
-      toast.textContent = `✅ 已將 ${grp}組 #${qid} 的正確答案修改為 (${newAns})（已套用至本機系統；請點擊右上方「更新題庫檔案」以寫入 questions_${grp}.js）。`;
+      toast.textContent = `⏳ 正在將 ${grp}組 #${qid} 的正確答案 (${newAns}) 同步至 Google 試算表...`;
       toast.classList.remove("hidden");
+      try {
+        const res = await apiPost({
+          action: "saveOverride",
+          group: grp,
+          qid,
+          answer: newAns,
+          editor: currentUser ? currentUser.username : "admin"
+        });
+        if (res && res.ok) {
+          if (res.overrides) {
+            localStorage.setItem(LS_ANS_OVERRIDES_KEY, JSON.stringify(res.overrides));
+            applyAnswerOverridesToAllBanks();
+          }
+          toast.textContent = `✅ 已將 ${grp}組 #${qid} 的正確答案修改為 (${newAns})（已同步至 Google 試算表，所有學生作答時將自動套用）。`;
+        } else {
+          toast.textContent = `⚠️ 已將 ${grp}組 #${qid} 修改為 (${newAns})（本機已套用，雲端同步失敗：${escapeHtml(res && res.error ? res.error : "未知錯誤")}）。`;
+        }
+      } catch (err) {
+        toast.textContent = `⚠️ 已將 ${grp}組 #${qid} 修改為 (${newAns})（本機已套用，雲端目前離線）。`;
+      }
     }
 
     async function saveUpdatedBankFile() {
@@ -1802,10 +2035,12 @@
     }
 
     // ================= 6C. 積分排行榜 =================
-    function openLeaderboard() {
+    async function openLeaderboard() {
       if (!currentUser) return;
       stopTimer();
       showView("view-leaderboard");
+      renderLeaderboard();
+      await bootstrapFromCloud();
       renderLeaderboard();
     }
 
@@ -1821,33 +2056,60 @@
 
     function renderLeaderboard() {
       const grpFilter = document.getElementById("lb-group-filter").value;
-      const students = getUsers().filter(u => u.role === "user");
       const groupsToSum = grpFilter ? [grpFilter] : ["國小", "國中", "高中職", "社會"];
 
-      const rows = students.map(s => {
-        const prog = getStudentProgressByUsername(s.username);
-        let correct = 0;
-        let answered = 0;
-        let suddenBest = 0;
-        groupsToSum.forEach(g => {
-          const gp = prog[g];
-          if (gp) {
-            correct += gp.totalCorrect || 0;
-            answered += gp.totalAnswered || 0;
-            if ((gp.suddenBest || 0) > suddenBest) suddenBest = gp.suddenBest || 0;
-          }
+      let rows = [];
+      if (cloudConnected && Array.isArray(cloudLeaderboardCache)) {
+        rows = cloudLeaderboardCache.map(s => {
+          let correct = 0;
+          let answered = 0;
+          let suddenBest = 0;
+          groupsToSum.forEach(g => {
+            const gp = s.groups && s.groups[g];
+            if (gp) {
+              correct += Number(gp.correct) || 0;
+              answered += Number(gp.answered) || 0;
+              if ((Number(gp.suddenBest) || 0) > suddenBest) suddenBest = Number(gp.suddenBest) || 0;
+            }
+          });
+          const acc = answered > 0 ? ((correct / answered) * 100).toFixed(1) : "0.0";
+          return {
+            username: s.username,
+            name: s.name,
+            status: s.status || "active",
+            score: correct,
+            answered,
+            acc,
+            suddenBest
+          };
         });
-        const acc = answered > 0 ? ((correct / answered) * 100).toFixed(1) : "0.0";
-        return {
-          username: s.username,
-          name: s.name,
-          status: s.status,
-          score: correct,
-          answered,
-          acc,
-          suddenBest
-        };
-      });
+      } else {
+        const students = getUsers().filter(u => u.role === "user");
+        rows = students.map(s => {
+          const prog = getStudentProgressByUsername(s.username);
+          let correct = 0;
+          let answered = 0;
+          let suddenBest = 0;
+          groupsToSum.forEach(g => {
+            const gp = prog[g];
+            if (gp) {
+              correct += gp.totalCorrect || 0;
+              answered += gp.totalAnswered || 0;
+              if ((gp.suddenBest || 0) > suddenBest) suddenBest = gp.suddenBest || 0;
+            }
+          });
+          const acc = answered > 0 ? ((correct / answered) * 100).toFixed(1) : "0.0";
+          return {
+            username: s.username,
+            name: s.name,
+            status: s.status,
+            score: correct,
+            answered,
+            acc,
+            suddenBest
+          };
+        });
+      }
 
       const sortBy = document.getElementById("lb-sort-by").value;
       if (sortBy === "accuracy") {
@@ -1891,7 +2153,7 @@
       switchAdminTab("users");
     }
 
-    function switchAdminTab(tab) {
+    async function switchAdminTab(tab) {
       const tabs = ["users", "wrongs", "logs"];
       tabs.forEach(t => {
         const el = document.getElementById(`admin-tab-${t}`);
@@ -1904,13 +2166,24 @@
           btn.className = "px-4 py-2 rounded-xl text-sm font-bold bg-white text-sky-800 border border-sky-200 hover:bg-sky-100 cursor-pointer";
         }
       });
-      if (tab === "users") renderUsersTable();
-      else if (tab === "wrongs") {
+      if (tab === "users") {
+        renderUsersTable();
+        await bootstrapFromCloud();
+        renderUsersTable();
+      } else if (tab === "wrongs") {
         populateAdminStudentSelects();
         renderAdminStudentWrongs();
       } else if (tab === "logs") {
         populateAdminStudentSelects();
         renderLogsTable();
+        try {
+          const res = await apiGet("logs");
+          if (res && res.ok && Array.isArray(res.logs)) {
+            cloudLogsCache = res.logs;
+            localStorage.setItem(LS_LOGS_KEY, JSON.stringify(res.logs));
+            renderLogsTable();
+          }
+        } catch (e) {}
       }
     }
 
@@ -1958,6 +2231,15 @@
         sumDiv.innerHTML = "";
         listDiv.innerHTML = '<div class="text-center text-slate-400 py-8">請先於「使用者管理」建立學生帳號。</div>';
         return;
+      }
+
+      if (cloudConnected) {
+        try {
+          const res = await apiGet("userData", { username: uname });
+          if (res && res.ok && res.progress) {
+            localStorage.setItem(LS_PROGRESS_PREFIX + uname, JSON.stringify(res.progress));
+          }
+        } catch (e) {}
       }
 
       const prog = getStudentProgressByUsername(uname);
@@ -2051,20 +2333,20 @@
               ${u.role === "admin" ? "管理者" : "一般使用者"}
             </span>
           </td>
-          <td class="px-4 py-3 text-xs">${escapeHtml(u.defaultGroup || "國小")}</td>
+          <td class="px-4 py-3 text-xs">${u.role === "admin" ? '<span class="text-slate-400">-</span>' : escapeHtml(u.defaultGroup || "國小")}</td>
           <td class="px-4 py-3">
             <span class="px-2 py-0.5 rounded-full text-xs font-bold ${u.status === "disabled" ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700"}">
               ${u.status === "disabled" ? "停用" : "啟用"}
             </span>
           </td>
-          <td class="px-4 py-3 text-xs text-slate-500">${escapeHtml(u.createdAt || "-")}</td>
+          <td class="px-4 py-3 text-xs text-slate-500">${escapeHtml(formatDateTimeStr(u.createdAt) || "-")}</td>
           <td class="px-4 py-3 text-right space-x-1.5 whitespace-nowrap">
-            ${u.role === "user" ? `<button onclick="viewStudentWrongsQuick('${escapeAttr(u.username)}','${escapeAttr(u.defaultGroup || "國小")}')" class="text-xs px-2.5 py-1 rounded bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold cursor-pointer">錯題本</button>` : ""}
-            <button onclick="openUserModal('${escapeAttr(u.username)}')" class="text-xs px-2.5 py-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold cursor-pointer">編輯</button>
-            <button onclick="toggleUserStatus('${escapeAttr(u.username)}')" class="text-xs px-2.5 py-1 rounded bg-amber-50 text-amber-700 hover:bg-amber-100 font-bold cursor-pointer">
+            ${u.role === "user" ? `<button data-user="${escapeAttr(u.username)}" data-grp="${escapeAttr(u.defaultGroup || "國小")}" onclick="viewStudentWrongsQuick(this.dataset.user, this.dataset.grp)" class="text-xs px-2.5 py-1 rounded bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold cursor-pointer">錯題本</button>` : ""}
+            <button data-user="${escapeAttr(u.username)}" onclick="openUserModal(this.dataset.user)" class="text-xs px-2.5 py-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold cursor-pointer">編輯</button>
+            <button data-user="${escapeAttr(u.username)}" onclick="toggleUserStatus(this.dataset.user)" class="text-xs px-2.5 py-1 rounded bg-amber-50 text-amber-700 hover:bg-amber-100 font-bold cursor-pointer">
               ${u.status === "disabled" ? "啟用" : "停用"}
             </button>
-            ${u.role !== "admin" ? `<button onclick="deleteUser('${escapeAttr(u.username)}')" class="text-xs px-2.5 py-1 rounded bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold cursor-pointer">刪除</button>` : ""}
+            ${u.role !== "admin" ? `<button data-user="${escapeAttr(u.username)}" onclick="deleteUser(this.dataset.user)" class="text-xs px-2.5 py-1 rounded bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold cursor-pointer">刪除</button>` : ""}
           </td>
         </tr>
       `).join("");
@@ -2072,6 +2354,12 @@
 
     function onFormRoleChange() {
       document.getElementById("form-pwd-wrap").classList.remove("hidden");
+      const role = document.getElementById("form-role").value;
+      const grpWrap = document.getElementById("form-group-wrap");
+      if (grpWrap) {
+        if (role === "admin") grpWrap.classList.add("hidden");
+        else grpWrap.classList.remove("hidden");
+      }
     }
 
     function openUserModal(editUsername = "") {
@@ -2079,6 +2367,7 @@
       document.getElementById("edit-user-orig").value = editUsername;
       const unameInput = document.getElementById("form-username");
       const roleSelect = document.getElementById("form-role");
+      const roleLockHint = document.getElementById("role-lock-hint");
 
       if (editUsername) {
         const u = getUsers().find(x => x.username === editUsername);
@@ -2091,7 +2380,8 @@
         roleSelect.value = u.role;
         roleSelect.disabled = true;
         roleSelect.className = "w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-slate-100 text-slate-500 cursor-not-allowed";
-        document.getElementById("form-group").value = u.defaultGroup || "國小";
+        if (roleLockHint) roleLockHint.classList.remove("hidden");
+        document.getElementById("form-group").value = u.role === "admin" ? "國小" : (u.defaultGroup || "國小");
       } else {
         document.getElementById("modal-user-title").textContent = "新增使用者";
         unameInput.value = "";
@@ -2102,6 +2392,7 @@
         roleSelect.value = "user";
         roleSelect.disabled = false;
         roleSelect.className = "w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white";
+        if (roleLockHint) roleLockHint.classList.add("hidden");
         document.getElementById("form-group").value = "國小";
       }
       onFormRoleChange();
@@ -2112,47 +2403,73 @@
       document.getElementById("modal-user").classList.add("hidden");
     }
 
-    function saveUserForm(e) {
+    async function saveUserForm(e) {
       e.preventDefault();
       const orig = document.getElementById("edit-user-orig").value;
       const uname = document.getElementById("form-username").value.trim();
       const name = document.getElementById("form-name").value.trim();
       const pwd = document.getElementById("form-password").value;
       const role = document.getElementById("form-role").value;
-      const grp = document.getElementById("form-group").value;
+      const grp = role === "admin" ? "" : document.getElementById("form-group").value;
       const err = document.getElementById("form-user-err");
+      err.classList.add("hidden");
 
       const users = getUsers();
-      if (orig) {
-        const target = users.find(u => u.username === orig);
-        if (!target) return;
-        target.name = name;
-        if (pwd) target.password = pwd;
-        target.defaultGroup = grp;
-        saveUsers(users);
-        addLog("帳號管理", grp, `編輯使用者：${uname}（${target.role === "admin" ? "管理者" : "一般使用者"}）`);
-      } else {
-        if (!pwd) {
-          err.textContent = "新增使用者時必須設定登入密碼！";
-          err.classList.remove("hidden");
-          return;
-        }
-        if (users.some(u => u.username === uname)) {
-          err.textContent = "此帳號已存在，請使用其他帳號名稱。";
-          err.classList.remove("hidden");
-          return;
-        }
-        users.push({ username: uname, password: pwd, name, role, defaultGroup: grp, status: "active", createdAt: nowStr() });
-        saveUsers(users);
-        localStorage.removeItem(LS_PROGRESS_PREFIX + uname);
-        addLog("帳號管理", grp, `新增使用者：${uname}（${role === "admin" ? "管理者" : "一般使用者"}）`);
+      if (!orig && !pwd) {
+        err.textContent = "新增使用者時必須設定登入密碼！";
+        err.classList.remove("hidden");
+        return;
       }
 
+      let syncedCloud = false;
+      try {
+        const payload = orig
+          ? { action: "updateUser", username: orig, name, password: pwd, defaultGroup: grp }
+          : { action: "createUser", username: uname, password: pwd, name, role, defaultGroup: grp };
+        const res = await apiPost(payload);
+        if (res && res.ok) {
+          if (Array.isArray(res.users)) saveUsers(res.users);
+          if (!orig) {
+            localStorage.removeItem(LS_PROGRESS_PREFIX + uname);
+            await bootstrapFromCloud();
+          }
+          syncedCloud = true;
+        } else if (res && res.error) {
+          err.textContent = res.error;
+          err.classList.remove("hidden");
+          return;
+        }
+      } catch (ex) {
+        // 離線退回本機快取處理
+      }
+
+      if (!syncedCloud) {
+        if (orig) {
+          const target = users.find(u => u.username === orig);
+          if (!target) return;
+          target.name = name;
+          if (pwd) target.password = pwd;
+          target.defaultGroup = grp;
+          saveUsers(users);
+        } else {
+          if (users.some(u => u.username === uname)) {
+            err.textContent = "此帳號已存在，請使用其他帳號名稱。";
+            err.classList.remove("hidden");
+            return;
+          }
+          users.push({ username: uname, password: pwd, name, role, defaultGroup: grp, status: "active", createdAt: nowStr() });
+          saveUsers(users);
+          localStorage.removeItem(LS_PROGRESS_PREFIX + uname);
+        }
+      }
+
+      addLog("帳號管理", grp, `${orig ? "編輯" : "新增"}使用者：${uname}（${role === "admin" ? "管理者" : "一般使用者"}）`);
       closeUserModal();
+      populateAdminStudentSelects();
       renderUsersTable();
     }
 
-    function toggleUserStatus(uname) {
+    async function toggleUserStatus(uname) {
       const users = getUsers();
       const target = users.find(u => u.username === uname);
       if (!target) return;
@@ -2161,13 +2478,34 @@
         alert("無法停用最後一位啟用中的管理者！");
         return;
       }
-      target.status = target.status === "disabled" ? "active" : "disabled";
-      saveUsers(users);
-      addLog("帳號管理", "-", `${target.status === "disabled" ? "停用" : "啟用"}使用者：${uname}`);
+
+      let syncedCloud = false;
+      let newStatus = target.status === "disabled" ? "active" : "disabled";
+      try {
+        const res = await apiPost({ action: "toggleUserStatus", username: uname });
+        if (res && res.ok) {
+          if (Array.isArray(res.users)) {
+            saveUsers(res.users);
+            const updated = res.users.find(u => u.username === uname);
+            if (updated) newStatus = updated.status;
+          }
+          await bootstrapFromCloud();
+          syncedCloud = true;
+        } else if (res && res.error) {
+          alert(res.error);
+          return;
+        }
+      } catch (ex) {}
+
+      if (!syncedCloud) {
+        target.status = newStatus;
+        saveUsers(users);
+      }
+      addLog("帳號管理", "-", `${newStatus === "disabled" ? "停用" : "啟用"}使用者：${uname}`);
       renderUsersTable();
     }
 
-    function deleteUser(uname) {
+    async function deleteUser(uname) {
       const users = getUsers();
       const target = users.find(u => u.username === uname);
       if (!target) return;
@@ -2176,7 +2514,23 @@
         return;
       }
       if (!confirm(`確定要永久刪除使用者「${uname}（${target.name}）」及其專屬錯題本與練習紀錄嗎？`)) return;
-      saveUsers(users.filter(u => u.username !== uname));
+
+      let syncedCloud = false;
+      try {
+        const res = await apiPost({ action: "deleteUser", username: uname });
+        if (res && res.ok) {
+          if (Array.isArray(res.users)) saveUsers(res.users);
+          if (Array.isArray(res.leaderboard)) cloudLeaderboardCache = res.leaderboard;
+          syncedCloud = true;
+        } else if (res && res.error) {
+          alert(res.error);
+          return;
+        }
+      } catch (ex) {}
+
+      if (!syncedCloud) {
+        saveUsers(users.filter(u => u.username !== uname));
+      }
       localStorage.removeItem(LS_PROGRESS_PREFIX + uname);
       populateAdminStudentSelects();
       addLog("帳號管理", "-", `刪除使用者：${uname}`);
@@ -2184,14 +2538,15 @@
     }
 
     function getFilteredLogs() {
-      const logs = JSON.parse(localStorage.getItem(LS_LOGS_KEY) || "[]");
+      const useCloud = cloudConnected && Array.isArray(cloudLogsCache);
+      const logs = useCloud ? cloudLogsCache : JSON.parse(localStorage.getItem(LS_LOGS_KEY) || "[]");
       const stu = document.getElementById("log-filter-student").value;
       const grp = document.getElementById("log-filter-group").value;
       const res = [];
       logs.forEach((l, rawIdx) => {
+        const isQuizLog = useCloud ? true : (l.role !== "管理者" && l.action === "完成測驗");
         if (
-          l.role !== "管理者" &&
-          l.action === "完成測驗" &&
+          isQuizLog &&
           (!stu || l.username === stu) &&
           (!grp || l.group === grp)
         ) {
@@ -2221,25 +2576,32 @@
       }
       tbody.innerHTML = logs.slice(0, 500).map(l => `
         <tr class="hover:bg-slate-50">
-          <td class="px-3 py-2 text-slate-500 whitespace-nowrap">${escapeHtml(l.time)}</td>
+          <td class="px-3 py-2 text-slate-500 whitespace-nowrap">${escapeHtml(formatDateTimeStr(l.time))}</td>
           <td class="px-3 py-2 font-bold text-slate-800">${escapeHtml(l.name)} <span class="font-normal text-slate-500">(${escapeHtml(l.username)})</span></td>
           <td class="px-3 py-2">${escapeHtml(l.group)}組</td>
           <td class="px-3 py-2">${escapeHtml(l.detail)}</td>
           <td class="px-3 py-2 font-bold text-emerald-700 whitespace-nowrap">${escapeHtml(l.score)}</td>
           <td class="px-3 py-2 text-slate-600 whitespace-nowrap">${escapeHtml(l.duration)}</td>
           <td class="px-3 py-2 text-right whitespace-nowrap">
-            <button onclick="deleteSingleLog(${l._rawIdx})" class="text-xs px-2.5 py-1 rounded bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold cursor-pointer">刪除</button>
+            <button data-idx="${Number(l._rawIdx)}" data-id="${escapeAttr(l.id || "")}" onclick="deleteSingleLog(Number(this.dataset.idx), this.dataset.id)" class="text-xs px-2.5 py-1 rounded bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold cursor-pointer">刪除</button>
           </td>
         </tr>
       `).join("");
     }
 
-    function deleteSingleLog(rawIdx) {
-      const logs = JSON.parse(localStorage.getItem(LS_LOGS_KEY) || "[]");
+    async function deleteSingleLog(rawIdx, logId) {
+      const useCloud = cloudConnected && Array.isArray(cloudLogsCache);
+      const logs = useCloud ? cloudLogsCache : JSON.parse(localStorage.getItem(LS_LOGS_KEY) || "[]");
       if (rawIdx < 0 || rawIdx >= logs.length) return;
       const target = logs[rawIdx];
       if (!confirm(`確定要刪除「${target.name}」於 ${target.time} 的這筆使用紀錄嗎？`)) return;
+      if (cloudConnected && (logId || target.id)) {
+        try {
+          await apiPost({ action: "deleteLog", logId: logId || target.id });
+        } catch (e) {}
+      }
       logs.splice(rawIdx, 1);
+      if (useCloud) cloudLogsCache = logs;
       localStorage.setItem(LS_LOGS_KEY, JSON.stringify(logs));
       renderLogsTable();
     }
@@ -2273,22 +2635,51 @@
       URL.revokeObjectURL(url);
     }
 
-    function clearAllLogs() {
+    async function clearAllLogs() {
       if (!confirm("確定要清空所有使用紀錄嗎？此動作無法復原。")) return;
+      if (cloudConnected) {
+        try {
+          await apiPost({ action: "clearLogs" });
+        } catch (e) {}
+      }
+      cloudLogsCache = [];
       localStorage.setItem(LS_LOGS_KEY, "[]");
       renderLogsTable();
+    }
+
+    function formatDateTimeStr(val) {
+      const s = String(val ?? "").trim();
+      if (!s || s === "-") return s;
+      if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}$/.test(s)) return s;
+      if (/GMT[+-]\d{4}/.test(s) || /^\d{4}-\d{2}-\d{2}T/.test(s)) {
+        const d = new Date(s);
+        if (!isNaN(d.getTime())) {
+          const pad = n => String(n).padStart(2, "0");
+          return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        }
+      }
+      return s;
     }
 
     function escapeHtml(s) {
       return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     }
     function escapeAttr(s) {
-      return String(s ?? "").replace(/'/g, "\\'").replace(/"/g, "&quot;");
+      return String(s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;")
+        .replace(/\\/g, "&#92;")
+        .replace(/\r/g, "&#13;")
+        .replace(/\n/g, "&#10;");
     }
 
     // 啟動初始化
     initDefaultUsers();
     populateUserDropdown();
+    bootstrapFromCloud();
   </script>
 </body>
 </html>
